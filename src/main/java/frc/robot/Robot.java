@@ -170,9 +170,27 @@ public class Robot extends TimedRobot {
     	_pidgey.setFusedHeading(0.0, kTimeoutMs);
 		_goStraight = GoStraight.Off;    //Start example with GoStraight Off
     }
-	
-    /**
-     * This function is called periodically during operator control
+	public void autonomousInit() {
+        /* Factory Default all Hardware to prevent unexpected behaviour */
+       // _rightFront.configFactoryDefault();
+       // _leftFront.configFactoryDefault();
+       // _rightRear.configFactoryDefault();
+	   // _leftRear.configFactoryDefault();
+	   // NMH
+	   //tankDrive.setSafetyEnabled(true);
+	  // tankDrive.setExpiration(0.1);
+	   //tankDrive.setMaxOutput(1);
+       _pidgey.configFactoryDefault();
+	   /*autoSelected = m_chooser.getSelected()
+        /* nonzero to block the config until success, zero to skip checking */
+        final int kTimeoutMs = 30;
+    
+        /* reset heading, angle measurement wraps at plus/minus 23,040 degrees (64 rotations) */
+    	_pidgey.setFusedHeading(0.0, kTimeoutMs);
+		_goStraight = GoStraight.Off;    //Start example with GoStraight Off
+    
+	}
+     /*This function is called periodically during operator control
      */
     public void teleopPeriodic() {
     	/* get Pigeon status information from Pigeon API */
@@ -285,7 +303,120 @@ public class Robot extends TimedRobot {
 			System.out.println("------------------------------------------");
 		}
     }
+	public void autonomousPeriodic() {
+    	/* get Pigeon status information from Pigeon API */
+		PigeonIMU.GeneralStatus genStatus = new PigeonIMU.GeneralStatus();
+		PigeonIMU.FusionStatus fusionStatus = new PigeonIMU.FusionStatus();
+		double [] xyz_dps = new double [3];
+		/* grab some input data from Pigeon and gamepad*/
+		_pidgey.getGeneralStatus(genStatus);
+		_pidgey.getRawGyro(xyz_dps);
+		_pidgey.getFusedHeading(fusionStatus);
+        double currentAngle = fusionStatus.heading;
+		boolean angleIsGood = (_pidgey.getState() == PigeonIMU.PigeonState.Ready) ? true : false;
+		double currentAngularRate = xyz_dps[2];
+		/* get input from gamepad */
+		boolean userWantsGoStraight = true; //_driveStick.getRawButton(5); /* top left shoulder button */
+		//double forwardThrottle = _driveStick.getY() * -1.0; /* sign so that positive is forward */
+		//double turnThrottle = _driveStick.getTwist() * -0.5;/* sign so that positive means turn left */
+		double forwardThrottle =  0.2 * -1.0; /* sign so that positive is forward */
+		double turnThrottle = _driveStick.getTwist() * -0.5;/* sign so that positive means turn left */
+		/* deadbands so centering joysticks always results in zero output */
+		forwardThrottle = Deadband(forwardThrottle);
+		turnThrottle = Deadband(turnThrottle);
+		// NMH
+		double y;
+		double twist;
+        
+		/* state machine to update our goStraight selection */
+		switch (_goStraight) {
+			/* go straight is off, better check gamepad to see if we should enable the feature */
+			case Off:
+				if (userWantsGoStraight == true) {
+					/* nothing to do */
+				} else if (angleIsGood == false) {
+					/* user wants to servo but Pigeon kisn't connected? */
+					_goStraight = GoStraight.SameThrottle; /* just apply same throttle to both sides */
+				} else {
+					/* user wants to servo, save the current heading so we know where to servo to. */
+					_goStraight = GoStraight.UsePigeon;
+					_targetAngle = currentAngle;
+				}
+                break;
+                
+			/* we are servo-ing heading with Pigeon */
+			case UsePigeon:
+				if (userWantsGoStraight == false) {
+					_goStraight = GoStraight.Off; /* user let go, turn off the feature */
+				} else if (angleIsGood == false) {
+					_goStraight = GoStraight.SameThrottle; /* we were servo-ing with pidgy, but we lost connection?  Check wiring and deviceID setup */
+				} else {
+					/* user still wants to drive straight, keep doing it */
+				}
+				break;
 
+			/* we are simply applying the same throttle to both sides, apparently Pigeon is not connected */
+			case SameThrottle:
+				if (userWantsGoStraight == false) {
+					_goStraight = GoStraight.Off; /* user let go, turn off the feature */
+				} else {
+					/* user still wants to drive straight, keep doing it */
+				}
+				break;
+		}
+
+		/* if we can servo with IMU, do the math here */
+		if (_goStraight == GoStraight.UsePigeon) {
+			/* very simple Proportional and Derivative (PD) loop with a cap,
+			 * replace with favorite close loop strategy or leverage future Talon <=> Pigeon features. */
+			turnThrottle = (_targetAngle - currentAngle) * kPgain - (currentAngularRate) * kDgain;
+			/* the max correction is the forward throttle times a scalar,
+			 * This can be done a number of ways but basically only apply small turning correction when we are moving slow
+			 * and larger correction the faster we move.  Otherwise you may need stiffer pgain at higher velocities. */
+			double maxThrot = MaxCorrection(forwardThrottle, kMaxCorrectionRatio);
+			turnThrottle = Cap(turnThrottle, maxThrot);
+		} else if (_goStraight == GoStraight.SameThrottle) {
+			/* clear the turn throttle, just apply same throttle to both sides */
+			turnThrottle = 0;
+		} else {
+			/* do nothing */
+		}
+
+		/* positive turnThrottle means turn to the left, this can be replaced with ArcadeDrive object, or teams drivetrain object */
+		double left = forwardThrottle - turnThrottle;
+		double right = forwardThrottle + turnThrottle;
+		left = Cap(left, 1.0);
+		right = Cap(right, 1.0);
+		System.out.println ("Left speed = " + left);
+		System.out.println ("Right speed = " + right);
+		/* our right side motors need to drive negative to move robot forward */
+		//_leftFront.set(ControlMode.PercentOutput, left);
+	    //_leftRear.set(ControlMode.PercentOutput, left);
+	    //_rightFront.set(ControlMode.PercentOutput, -1. * right);
+		//_rightRear.set(ControlMode.PercentOutput, -1. * right);
+		rightMaster.set(-right);
+		leftMaster.set(left);
+		//NMH
+		//y = -_driveStick.getY();
+	    //twist = _driveStick.getTwist();
+        //tankDrive.arcadeDrive(y, twist);
+
+
+
+		/* Prints for debugging */
+		if (++_printLoops > 50){
+			_printLoops = 0;
+			/* Create Print Block */
+			System.out.println("------------------------------------------");
+			System.out.println("error: " + (_targetAngle - currentAngle) );
+			System.out.println("angle: "+ currentAngle);
+			System.out.println("rate: "+ currentAngularRate);
+			System.out.println("noMotionBiasCount: "+ genStatus.noMotionBiasCount);
+			System.out.println("tempCompensationCount: "+ genStatus.tempCompensationCount);
+			System.out.println( angleIsGood ? "Angle is good" : "Angle is NOT GOOD");
+			System.out.println("------------------------------------------");
+		}
+		}
     /** 
      * @param axisVal to deadband.
      * @return 10% deadbanded joystick value
