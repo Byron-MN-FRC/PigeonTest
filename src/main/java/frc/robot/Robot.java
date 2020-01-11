@@ -87,7 +87,7 @@ public class Robot extends TimedRobot {
     PWMVictorSPX rightMaster;  
     PWMVictorSPX rightfollower;  
     SpeedControllerGroup speedControllerGroupRight;
-	DifferentialDrive tankDrive;
+	//DifferentialDrive tankDrive;
 		
 	/** States for tracking whats controlling the drivetrain */
 	enum GoStraight
@@ -131,7 +131,7 @@ public class Robot extends TimedRobot {
 		rightfollower = new PWMVictorSPX(3);
 		rightfollower.setInverted(false);
 		speedControllerGroupRight = new SpeedControllerGroup(rightMaster, rightfollower  );
-		tankDrive = new DifferentialDrive(speedControllerGroupLeft, speedControllerGroupRight);
+		//tankDrive = new DifferentialDrive(speedControllerGroupLeft, speedControllerGroupRight);
 	
         /**
 		 * Set isPigeonOnCAN to:
@@ -158,9 +158,9 @@ public class Robot extends TimedRobot {
        // _rightRear.configFactoryDefault();
 	   // _leftRear.configFactoryDefault();
 	   // NMH
-	   tankDrive.setSafetyEnabled(true);
-	   tankDrive.setExpiration(0.1);
-	   tankDrive.setMaxOutput(1);
+	   //tankDrive.setSafetyEnabled(true);
+	  // tankDrive.setExpiration(0.1);
+	   //tankDrive.setMaxOutput(1);
        _pidgey.configFactoryDefault();
 
         /* nonzero to block the config until success, zero to skip checking */
@@ -252,20 +252,22 @@ public class Robot extends TimedRobot {
 		}
 
 		/* positive turnThrottle means turn to the left, this can be replaced with ArcadeDrive object, or teams drivetrain object */
-	//	double left = forwardThrottle - turnThrottle;
-	//	double right = forwardThrottle + turnThrottle;
-	//	left = Cap(left, 1.0);
-	//	right = Cap(right, 1.0);
+		double left = forwardThrottle - turnThrottle;
+		double right = forwardThrottle + turnThrottle;
+		left = Cap(left, 1.0);
+		right = Cap(right, 1.0);
 
 		/* our right side motors need to drive negative to move robot forward */
 		//_leftFront.set(ControlMode.PercentOutput, left);
 	    //_leftRear.set(ControlMode.PercentOutput, left);
 	    //_rightFront.set(ControlMode.PercentOutput, -1. * right);
 		//_rightRear.set(ControlMode.PercentOutput, -1. * right);
+		rightMaster.set(-right);
+		leftMaster.set(left);
 		//NMH
-		y = -_driveStick.getY();
-	    twist = _driveStick.getTwist();
-        tankDrive.arcadeDrive(y, twist);
+		//y = -_driveStick.getY();
+	    //twist = _driveStick.getTwist();
+        //tankDrive.arcadeDrive(y, twist);
 
 
 
